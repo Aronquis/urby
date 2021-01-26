@@ -58,6 +58,12 @@ const BlogsBlogSchema = mongoose.Schema({
         required: false,
         ref: 'Usuario'
     },
+    estadoNotificacion:{
+        type: String,
+        default: '0',
+        required: false,
+        trim: true
+    },
     categoriaBlog: {
         type: mongoose.Schema.Types.ObjectId,
         required: false,

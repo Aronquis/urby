@@ -38,8 +38,7 @@ const typeDefs = gql`
     }
     input loginInput{
         email:String
-        nroCelular:String
-        codigoSeguridad:String
+        tipoRedSocial:String
         password:String
     }
     type CategoriaBlog {
@@ -77,7 +76,7 @@ const typeDefs = gql`
         nroComentarios:Int
         usuario:String
         categoriaBlog:String
-        Usuario:Usuario
+        Usuarios:Usuario
         CategoriaBlog:CategoriaBlog
         creation:String
     }
@@ -137,11 +136,32 @@ const typeDefs = gql`
         NroItems:Int
         data:[RespuestasBlog!]
     }
+    type GetBlogs {
+        NroItems:Int
+        data:[Blog!]
+    }
+    type  NotificacionBlog {
+        id:String
+        estadoNotificacion:String
+    }
+    input  NotificacionBlogInput {
+        id:String
+        estadoNotificacion:String
+    }
+    
     type Query {
+        getNotificacionesBlog(id:String):[NotificacionBlog!]
+        getBlogSlug(slug:String):Blog
+        getBlogFavorito(favorito:String,numberPages:Int,page:Int):GetBlogs
+        GetCategoriasBlogSlug(slugCategoria:String,estado:String,numberPages:Int,page:Int):GetBlogs
+        getCategoriasBlog(estado:String):[CategoriaBlog!]
+        getCategoriasBlogSlug(slug:String):CategoriaBlog
         getComentarios(BlogId:String,numberPages:Int,page:Int): GetComentarios
         getRespuestas(comentarioID:String,BlogId:String,numberPages:Int,page:Int): GetRespuestas
     }
     type Mutation {
+        #crear rspuestas
+        UpdateEstadoNotificacionBlog(input:NotificacionBlogInput) : NotificacionBlog
         #crear rspuestas
         CreateRespuestaBlog(input: RespuestasBlogInput) : RespuestasBlog
         UpdateRespuestaBlog(input: RespuestasBlogInput) : RespuestasBlog
@@ -161,7 +181,9 @@ const typeDefs = gql`
         #Usuarios
         CreateUsuario(input: UsuarioInput) : Usuario
         Login(input: loginInput) : Usuario
-        
+    }
+    type Subscription {
+        NotificacionBlog: NotificacionBlog
     }
 `;
 

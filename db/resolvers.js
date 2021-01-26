@@ -6,7 +6,8 @@ const bcryptjs=require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const lodash = require('lodash');   
 const slugConvert = require('slug');
-
+const {PubSub} = require('graphql-subscriptions');
+const pubsub = new PubSub();
 
 require('dotenv').config({path:'variables.env'});
 
@@ -18,9 +19,106 @@ const createToken = (user, secret) => {
     return jwt.sign( { id,tipoUsuario,tipoDocumento,nroDocumento,nombres,apellidos,
         fechaNacimiento,email,celular,foto}, secret )
 }
+const NOTIFICACION_BLOG = "NOTIFICACION_BLOG";
 //Resolvers 
 const resolvers ={
+    Subscription: {
+        NotificacionBlog: {
+          // Additional event labels can be passed to asyncIterator creation
+          subscribe: () => pubsub.asyncIterator([NOTIFICACION_BLOG]),
+        }
+    },
     Query: {
+        getNotificacionesBlog: async (_, {}) => {
+            notificacion=await Blog.find({estadoNotificacion:"0"});
+            return notificacion;
+        },
+        getBlogSlug: async (_, {slug}) => {
+            blog=await Blog.findOne({slug:slug});
+            blog.CategoriaBlog=await CategoriaBlog.findById(blog.categoriaBlog);
+            blog.Usuarios=await Usuario.findById(blog.usuario);
+            return blog;
+        },
+        getBlogFavorito: async (_, {numberPages,page,favorito}) => {
+            const options = {
+                page: page,
+                limit: numberPages,
+                "sort" :  [[ 'creation' , 'desc' ]]
+            };
+            if(favorito==""){
+                const blogs = await Blog.paginate({},options);
+                blogs.NroItems=blogs.totalDocs;
+                blogs.data=blogs.docs;
+                for (var i = 0 in  blogs.data) {
+                    blogs.data[i].CategoriaBlog=await CategoriaBlog.findById(blogs.data[i].categoriaBlog);
+                    blogs.data[i].Usuarios=await Usuario.findById(blogs.data[i].usuario);
+                }
+                return blogs;
+            }
+            else{
+                const blogs = await Blog.paginate({"favorito": favorito },options);
+                blogs.NroItems=blogs.totalDocs;
+                blogs.data=blogs.docs;
+                for (var i = 0 in  blogs.data) {
+                    blogs.data[i].CategoriaBlog=await CategoriaBlog.findById(blogs.data[i].categoriaBlog);
+                    blogs.data[i].Usuarios=await Usuario.findById(blogs.data[i].usuario);
+                }
+                return blogs;
+            }
+        },
+        GetCategoriasBlogSlug: async (_, {numberPages,page,slugCategoria,estado}) => {
+            const options = {
+                page: page,
+                limit: numberPages,
+                "sort" :  [[ 'creation' , 'desc' ]]
+            };
+            
+            if(estado==""){
+                categorias=await CategoriaBlog.findOne({slug:slugCategoria});
+                const blogs = await Blog.paginate({"categoriaBlog": categorias.id },options);
+                blogs.NroItems=blogs.totalDocs;
+                blogs.data=blogs.docs;
+                for (var i = 0 in  blogs.data) {
+                    blogs.data[i].CategoriaBlog=await CategoriaBlog.findById(blogs.data[i].categoriaBlog);
+                    blogs.data[i].Usuarios=await Usuario.findById(blogs.data[i].usuario);
+                }
+                return blogs;
+            }
+            else{
+                categorias=await CategoriaBlog.findOne({slug:slugCategoria,estado:estado});
+                if(categorias){
+                    const blogs = await Blog.paginate({"categoriaBlog": categorias.id },options);
+                    blogs.NroItems=blogs.totalDocs;
+                    blogs.data=blogs.docs;
+                    for (var i = 0 in  blogs.data) {
+                        blogs.data[i].CategoriaBlog=await CategoriaBlog.findById(blogs.data[i].categoriaBlog);
+                        blogs.data[i].Usuarios=await Usuario.findById(blogs.data[i].usuario);
+                    }
+                    return blogs;
+                }
+                else{
+                    
+                    return null;
+                }
+            }
+            
+        },
+        getCategoriasBlog: async (_, {estado}) => {
+            if(estado==""){
+                Categoriablogs=await CategoriaBlog.find({});
+                
+                return Categoriablogs;
+            }
+            else{
+                Categoriablogs=await CategoriaBlog.find({estado:estado});
+                return Categoriablogs;
+            }
+            
+        },
+        getCategoriasBlogSlug: async (_, {slug}) => {
+            Categoriablogs=await CategoriaBlog.findOne({slug:slug});
+            return Categoriablogs;
+        },
         getRespuestas: async (_, {numberPages,page,BlogId,comentarioID}) => {
             
             blogs=await Blog.findOne({_id:BlogId});
@@ -56,6 +154,11 @@ const resolvers ={
         }
     },
     Mutation: {
+        UpdateEstadoNotificacionBlog: async (_, { input } ) => {
+            respuesta=await Blog.findOneAndUpdate({_id : input.id},input,{ new: true});
+              
+            return respuesta;
+        },
         CreateRespuestaBlog: async (_, { input } ) => {
             try {
                 blogs=await Blog.findOneAndUpdate({_id:input.blogID,"comentarios._id": input.comentarioID}, {$push:{'comentarios.$.respuestas':{'textComent':input.textComent,'stateComent':input.stateComent,'comentarioID':input.comentarioID,"userID":input.userID}, $position: 0}}, { new: true});
@@ -134,9 +237,12 @@ const resolvers ={
         },
         CreateBlog: async (_, { input } ) => {
             try {
+                
                 input.slug=slugConvert(input.titulo);
                 const blogs = new Blog(input);
                 const  blogsget = await blogs.save();
+
+                pubsub.publish(NOTIFICACION_BLOG, { NotificacionBlog: blogsget });
                 return blogsget;
             } catch(error){
                 console.log(error)
@@ -199,14 +305,15 @@ const resolvers ={
             const {email,password} = input;
             //Revisar si el User esta Registrado
             const beUser = await Usuario.findOne({email});
-            
             if(!beUser){
-                throw new Error('El Usuario no existe');
+                throw new Error('USUARIO_NO_EXISTE');
             }
+            recup_tipo_reg = lodash.filter(beUser.accesos, { "tipoRedSocial": input.tipoRedSocial });
+            
             //Revisar si el password es correct
-            const passwordCorrect = await bcryptjs.compare( password, beUser.password );
+            const passwordCorrect = await bcryptjs.compare( password, recup_tipo_reg[0].password );
             if(!passwordCorrect){
-                throw new Error('Contraseña Incorrecta');
+                throw new Error('CONTRASEÑA_INCORRECTA');
             }
             
             return beUser;
@@ -260,7 +367,7 @@ const resolvers ={
                         break;
                     case "3":
                         const usuario_recu3 = await Usuario.findOne({_id:beUser.id,"accesos.tipoRedSocial":{ $in: ["3"] }});
-                        if(usuario_recup3){
+                        if(usuario_recu3){
                             throw new Error('EXISTE_TIPO_REGISTRO_3');
                         }
                         else{
